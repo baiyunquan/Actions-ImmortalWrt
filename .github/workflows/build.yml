@@ -101,7 +101,11 @@ jobs:
       - name: Download sources
         working-directory: ImmortalWrt
         run: |
-          make download -j8
+          if ! timeout --foreground 45m make download -j8; then
+            echo "Initial parallel download failed or timed out; removing incomplete files and retrying."
+            find dl -type f -size -1024c -print -delete
+            timeout --foreground 45m make download -j4
+          fi
           find dl -type f -size -1024c -print -delete
 
       - name: Build minimal NOR firmware and all APK modules
