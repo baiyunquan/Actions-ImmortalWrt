@@ -63,6 +63,10 @@ for package_name in "${rich_packages[@]}"; do
 		exit 1
 	}
 done
+grep -Fqx "CONFIG_PACKAGE_xray-core=y" .config || {
+	echo "PassWall2 Xray core was not promoted into the rich rootfs" >&2
+	exit 1
+}
 
 # Module builds do not emit the pkginfo/*.install files consumed by
 # package/install. Re-run the official package compile target after promoting

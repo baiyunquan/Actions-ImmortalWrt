@@ -16,6 +16,21 @@ grep -q '&sdhci' "$device_dts"
 # test -f "package/nikki/luci-app-nikki/Makefile"
 test -f "$passwall2_dir/luci-app-passwall2/Makefile"
 
+# PassWall2 uses bool options whose unconditional `select` statements promote
+# large cores to built-ins even when the LuCI package itself is a module. Keep
+# those dependencies modular for the NOR build; they become built-ins after
+# build-rich-rootfs.sh promotes luci-app-passwall2 to y.
+passwall2_makefile="$passwall2_dir/luci-app-passwall2/Makefile"
+if grep -Eq '^[[:space:]]*select PACKAGE_[^ ]+$' "$passwall2_makefile"; then
+	sed -i -E \
+		'/^[[:space:]]*select PACKAGE_[^ ]+$/ s/$/ if PACKAGE_luci-app-passwall2=y/' \
+		"$passwall2_makefile"
+fi
+grep -q \
+	'select PACKAGE_xray-core if PACKAGE_luci-app-passwall2=y' \
+	"$passwall2_makefile"
+! grep -Eq '^[[:space:]]*select PACKAGE_[^ ]+$' "$passwall2_makefile"
+
 # mirror.iscas.ac.cn accepts connections but can stop transferring indefinitely.
 # Drop it before `make download`, and make curl abandon any other zero-speed
 # mirror so the downloader can continue with its next configured source.

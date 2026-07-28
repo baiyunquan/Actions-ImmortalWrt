@@ -100,6 +100,9 @@ jobs:
       - name: Validate resolved NOR configuration
         working-directory: ImmortalWrt
         run: |
+          grep -E \
+            '^(CONFIG_PACKAGE_(luci-app-passwall2|luci-i18n-passwall2-zh-cn|xray-core)=|# CONFIG_PACKAGE_(luci-app-passwall2|luci-i18n-passwall2-zh-cn|xray-core) is not set)' \
+            .config || true
           grep -qx 'CONFIG_TARGET_ramips_mt7621_DEVICE_jdcloud_re-cp-02=y' .config
           grep -qx 'CONFIG_TARGET_ROOTFS_SQUASHFS=y' .config
           grep -qx 'CONFIG_USE_APK=y' .config
