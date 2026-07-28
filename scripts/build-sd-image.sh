@@ -33,7 +33,7 @@ truncate -s $((p1_sectors * 512)) "$boot_image"
 mkfs.vfat -F 32 -n LUBANBOOT "$boot_image"
 
 printf '%s\n' \
-	"JDCloud RE-CP-02 ImmortalWrt 25.12" \
+	"JDCloud RE-CP-02 ImmortalWrt 25.12.1" \
 	"" \
 	"JDCOS.bin is the SPI-NOR sysupgrade image for the stock U-Boot" \
 	"TFTP recovery flow. This card contains a pre-expanded extroot." \

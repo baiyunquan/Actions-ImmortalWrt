@@ -12,7 +12,8 @@ concurrency:
 
 env:
   SOURCE_REPOSITORY: immortalwrt/immortalwrt
-  SOURCE_REF: openwrt-25.12
+  SOURCE_REF: v25.12.1
+  SOURCE_COMMIT: 2f8ab01a3659c90c4da71dd4c50d6a4ffee7b24a
   TZ: Asia/Shanghai
 
 jobs:
@@ -49,13 +50,19 @@ jobs:
             unzip zlib1g-dev file wget curl libelf-dev device-tree-compiler \
             qemu-utils dosfstools e2fsprogs fdisk mtools pigz zstd fakeroot
 
-      - name: Checkout ImmortalWrt 25.12
+      - name: Checkout ImmortalWrt 25.12.1 stable
         uses: actions/checkout@v4
         with:
           repository: ${{ env.SOURCE_REPOSITORY }}
           ref: ${{ env.SOURCE_REF }}
           path: ImmortalWrt
           fetch-depth: 1
+
+      - name: Validate stable ImmortalWrt source
+        working-directory: ImmortalWrt
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          grep -Fq 'VERSION_NUMBER),25.12.1)' include/version.mk
 
       - name: Cache downloads
         uses: actions/cache@v4

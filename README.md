@@ -1,7 +1,8 @@
 # 京东云鲁班 RE-CP-02 ImmortalWrt 双镜像
 
 本仓库通过 GitHub Actions 为京东云鲁班 AX1800（JDCloud RE-CP-02）
-构建 ImmortalWrt 25.12。设备支持直接使用 ImmortalWrt 上游设备树，不应用旧版
+构建稳定版 ImmortalWrt 25.12.1。主源码固定到官方 `v25.12.1` 标签，feeds 固定到
+该版本发布时使用的提交。设备支持直接使用 ImmortalWrt 上游设备树，不应用旧版
 第三方 `jdcloud_luban` 补丁。
 
 构建将 16 MiB SPI NOR 作为精简、可独立启动的主系统，把完整应用环境预展开到

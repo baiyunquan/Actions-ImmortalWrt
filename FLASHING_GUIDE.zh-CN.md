@@ -5,6 +5,9 @@
 - `JDCOS.bin`：写入 16 MiB SPI NOR 中的 `firmware` 分区。
 - `luban-sd-extroot.img.gz`：在另一台计算机上整盘写入 SD/TF 卡。
 
+当前构建固定使用稳定版 ImmortalWrt `v25.12.1`，以及该版本官方
+`feeds.conf.default` 中记录的 feeds 提交，不使用滚动的 Snapshot 分支。
+
 `JDCOS.bin` 的最大允许尺寸是 `0xf70000`（16,187,392 字节，即 15,808 KiB）。它不包含
 U-Boot、Config 或 Factory。Factory 保存本机 MAC 地址和 Wi-Fi 标定数据，绝不能
 用其他机器的备份替换。
@@ -75,7 +78,7 @@ export LUBAN_OUTPUT_DIR="$LUBAN_BUILD_DIR/output"
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 mkdir -p "$LUBAN_BUILD_DIR"
-git clone --depth 1 --branch openwrt-25.12 \
+git clone --depth 1 --branch v25.12.1 \
   https://github.com/immortalwrt/immortalwrt.git "$LUBAN_SOURCE_DIR"
 
 cp "$LUBAN_REPO_DIR/feeds.conf.default" "$LUBAN_SOURCE_DIR/feeds.conf.default"
