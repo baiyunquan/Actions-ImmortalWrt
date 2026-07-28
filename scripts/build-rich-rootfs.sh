@@ -65,6 +65,11 @@ for package_name in "${rich_packages[@]}"; do
 	}
 done
 
+# Module builds do not emit the pkginfo/*.install files consumed by
+# package/install. Re-run the official package compile target after promoting
+# the rich package set to built-in; existing build products are reused while
+# the built-in installation metadata is regenerated.
+make package/compile -j"$(nproc)" || make package/compile -j1 V=s
 make package/install
 
 target_dir="$(make -s --no-print-directory val.TARGET_DIR)"
