@@ -8,6 +8,9 @@
 SD/TF 卡上的 extroot。Nikki 以 git submodule 固定源码版本，并在同一构建树中现场
 编译。
 
+完整的本地交叉编译、SD 写卡、Ubuntu/Debian TFTP Server 配置、串口接线和
+U-Boot 烧录步骤见 [本地构建与烧录指南](FLASHING_GUIDE.zh-CN.md)。
+
 ## 构建产物
 
 在 GitHub 仓库的 Actions 页面手动运行 **Build JDCloud Luban ImmortalWrt**。
