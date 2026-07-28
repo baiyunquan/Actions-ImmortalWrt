@@ -4,7 +4,6 @@
 START=96
 USE_PROCD=0
 
-EXTROOT_LABEL="luban-extroot"
 EXTROOT_UUID="7fdb0d8a-01b5-4ab3-a5ac-431000000002"
 EXTROOT_MOUNT="/tmp/luban-extroot"
 IMAGE_MARKER="etc/luban/extroot-image-ready"
@@ -12,13 +11,13 @@ ACTIVE_MARKER="etc/luban/extroot-initialized"
 
 log() {
 	logger -t luban-extroot "$*"
+	printf '%s\n' "luban-extroot: $*" >&2
 }
 
 find_extroot_device() {
 	block info | awk \
-		-v uuid="UUID=\"$EXTROOT_UUID\"" \
-		-v label="LABEL=\"$EXTROOT_LABEL\"" '
-			index($0, uuid) && index($0, label) {
+		-v uuid="UUID=\"$EXTROOT_UUID\"" '
+			index($0, uuid) {
 				sub(/:.*/, "", $0)
 				print
 				exit
@@ -29,6 +28,7 @@ find_extroot_device() {
 configure_fstab() {
 	local config_dir="$1"
 
+	mkdir -p "$config_dir"
 	uci -q -c "$config_dir" delete fstab.luban_extroot >/dev/null 2>&1 || true
 	uci -q -c "$config_dir" batch <<-EOF
 		set fstab.luban_extroot='mount'
@@ -63,13 +63,11 @@ unmount_automounts() {
 }
 
 start() {
-	[ -e "/$ACTIVE_MARKER" ] && return 0
-
 	local device
 	device="$(find_extroot_device)"
 	if [ -z "$device" ]; then
-		log "prepared SD extroot not found; keeping the NOR overlay"
-		return 0
+		log "SD partition with UUID $EXTROOT_UUID was not found"
+		return 1
 	fi
 
 	if is_active_device "$device"; then
@@ -77,6 +75,11 @@ start() {
 		touch "/$ACTIVE_MARKER"
 		log "extroot is already active; repaired the completion marker"
 		return 0
+	fi
+
+	if [ -e "/$ACTIVE_MARKER" ]; then
+		log "ignoring stale /$ACTIVE_MARKER because $device is not /overlay"
+		rm -f "/$ACTIVE_MARKER"
 	fi
 
 	unmount_automounts "$device" || {
