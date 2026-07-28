@@ -5,8 +5,9 @@
 - `JDCOS.bin`：写入 16 MiB SPI NOR 中的 `firmware` 分区。
 - `luban-sd-extroot.img.gz`：在另一台计算机上整盘写入 SD/TF 卡。
 
-当前构建固定使用稳定版 ImmortalWrt `v25.12.1`，以及该版本官方
-`feeds.conf.default` 中记录的 feeds 提交，不使用滚动的 Snapshot 分支。
+当前构建固定使用稳定版 ImmortalWrt `v25.12.1`、该版本官方
+`feeds.conf.default` 中记录的 feeds 提交，以及固定提交的 PassWall 依赖 feed，
+不使用滚动的 Snapshot 分支。
 
 `JDCOS.bin` 的最大允许尺寸是 `0xf70000`（16,187,392 字节，即 15,808 KiB）。它不包含
 U-Boot、Config 或 Factory。Factory 保存本机 MAC 地址和 Wi-Fi 标定数据，绝不能
@@ -63,7 +64,8 @@ sudo apt install -y \
   fdisk mtools pigz zstd fakeroot
 ```
 
-从仓库根目录执行以下命令。Nikki 必须递归初始化，不能只取得主仓库：
+从仓库根目录执行以下命令。PassWall2 必须递归初始化，不能只取得主仓库；Nikki
+子模块会保留，但默认不参与编译：
 
 ```sh
 cd /home/liaic/backup_luban/Actions-ImmortalWrt
@@ -82,10 +84,12 @@ git clone --depth 1 --branch v25.12.1 \
   https://github.com/immortalwrt/immortalwrt.git "$LUBAN_SOURCE_DIR"
 
 cp "$LUBAN_REPO_DIR/feeds.conf.default" "$LUBAN_SOURCE_DIR/feeds.conf.default"
-rm -rf "$LUBAN_SOURCE_DIR/package/nikki" "$LUBAN_SOURCE_DIR/files"
-mkdir -p "$LUBAN_SOURCE_DIR/package/nikki"
+rm -rf "$LUBAN_SOURCE_DIR/package/nikki" \
+  "$LUBAN_SOURCE_DIR/package/passwall2" "$LUBAN_SOURCE_DIR/files"
+mkdir -p "$LUBAN_SOURCE_DIR/package/passwall2"
 rsync -a --exclude=.git \
-  "$LUBAN_REPO_DIR/package/nikki/" "$LUBAN_SOURCE_DIR/package/nikki/"
+  "$LUBAN_REPO_DIR/package/passwall2/" \
+  "$LUBAN_SOURCE_DIR/package/passwall2/"
 cp -a "$LUBAN_REPO_DIR/files" "$LUBAN_SOURCE_DIR/files"
 cp "$LUBAN_REPO_DIR/diy.sh" "$LUBAN_SOURCE_DIR/diy.sh"
 
@@ -98,18 +102,22 @@ cp "$LUBAN_REPO_DIR/.config" .config
 make defconfig
 
 if ! timeout --foreground 45m make download -j8; then
-  find dl -type f -size -1024c -print -delete
+  find dl -path dl/go-mod-cache -prune -o \
+    -type f -size -1024c -print -exec rm -f {} +
   timeout --foreground 45m make download -j4
 fi
-find dl -type f -size -1024c -print -delete
+find dl -path dl/go-mod-cache -prune -o \
+  -type f -size -1024c -print -exec rm -f {} +
 
+make package/feeds/packages/sing-box/compile -j1 V=s
+make package/feeds/passwall_packages/xray-core/compile -j1 V=s
 make -j"$(nproc)" || make -j1 V=s
 
 mkdir -p "$LUBAN_METADATA_DIR"
 cp .config "$LUBAN_METADATA_DIR/config.nor"
 git rev-parse HEAD > "$LUBAN_METADATA_DIR/IMMORTALWRT_COMMIT"
-git -C "$LUBAN_REPO_DIR/package/nikki" rev-parse HEAD \
-  > "$LUBAN_METADATA_DIR/NIKKI_COMMIT"
+git -C "$LUBAN_REPO_DIR/package/passwall2" rev-parse HEAD \
+  > "$LUBAN_METADATA_DIR/PASSWALL2_COMMIT"
 : > "$LUBAN_METADATA_DIR/FEED_COMMITS"
 for LUBAN_FEED_DIR in feeds/*; do
   test -d "$LUBAN_FEED_DIR" || continue
@@ -329,7 +337,7 @@ logread | grep -i luban
 ```
 
 `/overlay` 应来自 SD 卡的 ext4 文件系统。确认 LuCI、网络和 extroot 正常后再配置
-Nikki、Tailscale、qBittorrent 与共享目录。构建没有预置密码、订阅、凭据或下载
+PassWall2、Tailscale、qBittorrent 与共享目录。构建没有预置密码、订阅、凭据或下载
 目录。
 
 如果 `lsblk` 已显示 `/dev/mmcblk0p2` 挂在 `/mnt/mmcblk0p2`，但 `/overlay`
@@ -451,7 +459,7 @@ logread | grep -i -E 'luban|extroot'
 ```
 
 还应确认 `/overlay` 来自 `/dev/mmcblk0p2`、LuCI 可以登录、LAN/WAN 和无线正常，
-再启用 Nikki、Tailscale、Samba、qBittorrent 等可选服务。
+再启用 PassWall2、Tailscale、Samba、qBittorrent 等可选服务。
 
 ## 10. 停止本地 TFTP 服务
 

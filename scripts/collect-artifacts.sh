@@ -32,7 +32,8 @@ if ((sysupgrade_size > partition_size)); then
 fi
 
 for forbidden_package in \
-	filebrowser qbittorrent samba4-server sing-box tailscale mihomo-meta nikki; do
+	filebrowser qbittorrent samba4-server sing-box tailscale mihomo-meta nikki \
+	luci-app-passwall2 xray-core; do
 	if grep -Eq "^${forbidden_package}([[:space:]-]|$)" "$nor_manifest"; then
 		echo "large package leaked into the NOR image: $forbidden_package" >&2
 		exit 1
@@ -53,7 +54,7 @@ cp "$metadata_dir/config.extroot" "$output_dir/config.extroot"
 cp "$metadata_dir/EXTROOT_MANIFEST" "$output_dir/EXTROOT_MANIFEST"
 cp "$metadata_dir/IMMORTALWRT_COMMIT" "$output_dir/IMMORTALWRT_COMMIT"
 cp "$metadata_dir/FEED_COMMITS" "$output_dir/FEED_COMMITS"
-cp "$metadata_dir/NIKKI_COMMIT" "$output_dir/NIKKI_COMMIT"
+cp "$metadata_dir/PASSWALL2_COMMIT" "$output_dir/PASSWALL2_COMMIT"
 
 "$(dirname "$0")/build-sd-image.sh" \
 	"$output_dir/JDCOS.bin" \

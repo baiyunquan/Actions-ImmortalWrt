@@ -1,13 +1,13 @@
 # 京东云鲁班 RE-CP-02 ImmortalWrt 双镜像
 
 本仓库通过 GitHub Actions 为京东云鲁班 AX1800（JDCloud RE-CP-02）
-构建稳定版 ImmortalWrt 25.12.1。主源码固定到官方 `v25.12.1` 标签，feeds 固定到
-该版本发布时使用的提交。设备支持直接使用 ImmortalWrt 上游设备树，不应用旧版
-第三方 `jdcloud_luban` 补丁。
+构建稳定版 ImmortalWrt 25.12.1。主源码固定到官方 `v25.12.1` 标签，官方 feeds
+固定到该版本发布时使用的提交，PassWall 依赖 feed 也固定到明确提交。设备支持直接
+使用 ImmortalWrt 上游设备树，不应用旧版第三方 `jdcloud_luban` 补丁。
 
 构建将 16 MiB SPI NOR 作为精简、可独立启动的主系统，把完整应用环境预展开到
-SD/TF 卡上的 extroot。Nikki 以 git submodule 固定源码版本，并在同一构建树中现场
-编译。
+SD/TF 卡上的 extroot。PassWall2 以 git submodule 固定源码版本，并在同一构建树中
+现场编译。Nikki 子模块仍保留在仓库中，但默认不参与构建。
 
 完整的本地交叉编译、SD 写卡、Ubuntu/Debian TFTP Server 配置、串口接线和
 U-Boot 烧录步骤见 [本地构建与烧录指南](FLASHING_GUIDE.zh-CN.md)。
@@ -26,7 +26,7 @@ U-Boot 烧录步骤见 [本地构建与烧录指南](FLASHING_GUIDE.zh-CN.md)。
 - `NOR_MANIFEST` 与 `EXTROOT_MANIFEST`
 - `SYSUPGRADE_METADATA.json`
 - `config.nor` 与 `config.extroot`
-- ImmortalWrt、feeds 和 Nikki 的实际构建提交号
+- ImmortalWrt、feeds 和 PassWall2 的实际构建提交号
 
 `JDCOS.bin` 只覆盖官方设备树定义的 firmware 分区，不包含 U-Boot、Config 或每台
 设备唯一的 Factory/Wi-Fi 标定数据。
@@ -42,7 +42,7 @@ SD extroot 中预装：
 - FileBrowser daemon、`luci-app-filebrowser` 及中文翻译
 - Samba 4
 - qBittorrent、LuCI 配置页及中文翻译
-- Nikki、LuCI、中文翻译、Mihomo 及完整依赖
+- PassWall2、中文翻译、Xray 核心及 nftables 透明代理依赖
 
 没有安装 `luci-app-filebrowser-go`。它和 `luci-app-filebrowser` 会提供同名 ACL
 文件，本构建按约定保留后者；FileBrowser daemon 仍然存在，并可使用自身 WebUI。

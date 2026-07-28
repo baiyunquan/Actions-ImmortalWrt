@@ -34,10 +34,8 @@ rich_packages=(
 	qbittorrent
 	luci-app-qbittorrent
 	luci-i18n-qbittorrent-zh-cn
-	mihomo-meta
-	nikki
-	luci-app-nikki
-	luci-i18n-nikki-zh-cn
+	luci-app-passwall2
+	luci-i18n-passwall2-zh-cn
 )
 
 mkdir -p "$metadata_dir"
@@ -101,5 +99,6 @@ touch "$stage_dir/upper/etc/luban/extroot-image-ready"
 
 test -x "$stage_dir/upper/usr/bin/filebrowser"
 test -x "$stage_dir/upper/usr/bin/qbittorrent-nox"
-test -e "$stage_dir/upper/etc/init.d/nikki"
+test -e "$stage_dir/upper/etc/init.d/passwall2"
+test -x "$stage_dir/upper/usr/bin/xray"
 test -e "$stage_dir/upper/usr/share/luci/menu.d/luci-app-samba4.json"

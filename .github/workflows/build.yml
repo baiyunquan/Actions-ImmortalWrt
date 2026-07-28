@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout build configuration and Nikki
+      - name: Checkout build configuration and PassWall2
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -34,9 +34,11 @@ jobs:
           sh -n files/etc/init.d/luban-extroot
           test "$(readlink files/etc/rc.d/S96luban-extroot)" = \
             "../init.d/luban-extroot"
-          test -f package/nikki/nikki/Makefile
-          test -f package/nikki/mihomo-meta/Makefile
-          test -f package/nikki/luci-app-nikki/Makefile
+          # Nikki remains in the repository, but is intentionally not compiled.
+          # test -f package/nikki/nikki/Makefile
+          # test -f package/nikki/mihomo-meta/Makefile
+          # test -f package/nikki/luci-app-nikki/Makefile
+          test -f package/passwall2/luci-app-passwall2/Makefile
 
       - name: Install build and image tools
         env:
@@ -67,17 +69,24 @@ jobs:
       - name: Cache downloads
         uses: actions/cache@v4
         with:
-          path: ImmortalWrt/dl
-          key: luban-dl-${{ runner.os }}-${{ hashFiles('feeds.conf.default', '.config', '.gitmodules', 'package/nikki/**') }}
+          path: |
+            ImmortalWrt/dl
+            !ImmortalWrt/dl/go-mod-cache
+          key: luban-dl-${{ runner.os }}-${{ hashFiles('feeds.conf.default', '.config', '.gitmodules', 'package/passwall2/**') }}
           restore-keys: |
             luban-dl-${{ runner.os }}-
 
-      - name: Prepare feeds, Nikki, files, and configuration
+      - name: Prepare feeds, PassWall2, files, and configuration
         run: |
           cp feeds.conf.default ImmortalWrt/feeds.conf.default
-          rm -rf ImmortalWrt/package/nikki ImmortalWrt/files
-          mkdir -p ImmortalWrt/package/nikki
-          rsync -a --exclude=.git package/nikki/ ImmortalWrt/package/nikki/
+          rm -rf ImmortalWrt/package/nikki ImmortalWrt/package/passwall2 \
+            ImmortalWrt/files
+          # Nikki source is retained but no longer copied into the build tree.
+          # mkdir -p ImmortalWrt/package/nikki
+          # rsync -a --exclude=.git package/nikki/ ImmortalWrt/package/nikki/
+          mkdir -p ImmortalWrt/package/passwall2
+          rsync -a --exclude=.git \
+            package/passwall2/ ImmortalWrt/package/passwall2/
           cp -a files ImmortalWrt/files
           cp diy.sh ImmortalWrt/diy.sh
           chmod +x ImmortalWrt/diy.sh
@@ -99,23 +108,44 @@ jobs:
           for package_name in \
             filebrowser luci-app-filebrowser luci-app-homeproxy \
             luci-app-tailscale-community luci-app-samba4 qbittorrent \
-            luci-app-qbittorrent mihomo-meta nikki luci-app-nikki; do
+            luci-app-qbittorrent luci-app-passwall2; do
             grep -Eq "^CONFIG_PACKAGE_${package_name}=[my]$" .config
           done
+          grep -qx 'CONFIG_PACKAGE_xray-core=m' .config
+          grep -qx \
+            'CONFIG_PACKAGE_luci-app-passwall2_Basic_Core_Xray=y' .config
+          grep -qx \
+            'CONFIG_PACKAGE_luci-app-passwall2_Nftables_Transparent_Proxy=y' \
+            .config
+          ! grep -Eq \
+            '^CONFIG_PACKAGE_(yq|mihomo-meta|nikki|luci-app-nikki)=[my]$' \
+            .config
           ! grep -q '^CONFIG_PACKAGE_luci-app-filebrowser-go=' .config
-          test -f package/nikki/nikki/Makefile
-          test -f package/nikki/mihomo-meta/Makefile
-          test -f package/nikki/luci-app-nikki/Makefile
+          test -f package/passwall2/luci-app-passwall2/Makefile
 
       - name: Download sources
         working-directory: ImmortalWrt
         run: |
+          # Never reuse an extracted Go module cache. The files are cheap to
+          # reconstruct and mixing toolchain versions can leave partial trees.
+          rm -rf dl/go-mod-cache tmp/go-build
           if ! timeout --foreground 45m make download -j8; then
             echo "Initial parallel download failed or timed out; removing incomplete files and retrying."
-            find dl -type f -size -1024c -print -delete
+            find dl -path dl/go-mod-cache -prune -o \
+              -type f -size -1024c -print -exec rm -f {} +
             timeout --foreground 45m make download -j4
           fi
-          find dl -type f -size -1024c -print -delete
+          # go-mod-cache contains many legitimate source files below 1 KiB.
+          # Deleting them produces misleading "no required module provides"
+          # failures when compiling YQ, Sing-box, Xray, and similar Go tools.
+          find dl -path dl/go-mod-cache -prune -o \
+            -type f -size -1024c -print -exec rm -f {} +
+
+      - name: Build selected Go proxy cores serially
+        working-directory: ImmortalWrt
+        run: |
+          make package/feeds/packages/sing-box/compile -j1 V=s
+          make package/feeds/passwall_packages/xray-core/compile -j1 V=s
 
       - name: Build minimal NOR firmware and all APK modules
         working-directory: ImmortalWrt
@@ -127,7 +157,9 @@ jobs:
           mkdir -p build-metadata
           cp ImmortalWrt/.config build-metadata/config.nor
           git -C ImmortalWrt rev-parse HEAD > build-metadata/IMMORTALWRT_COMMIT
-          git -C package/nikki rev-parse HEAD > build-metadata/NIKKI_COMMIT
+          # git -C package/nikki rev-parse HEAD > build-metadata/NIKKI_COMMIT
+          git -C package/passwall2 rev-parse HEAD \
+            > build-metadata/PASSWALL2_COMMIT
           : > build-metadata/FEED_COMMITS
           for feed_dir in ImmortalWrt/feeds/*; do
             test -d "$feed_dir" || continue
