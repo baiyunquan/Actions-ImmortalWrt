@@ -5,7 +5,7 @@
 - `JDCOS.bin`：写入 16 MiB SPI NOR 中的 `firmware` 分区。
 - `luban-sd-extroot.img.gz`：在另一台计算机上整盘写入 SD/TF 卡。
 
-`JDCOS.bin` 的最大允许尺寸是 `0xf70000`（15,990,784 字节）。它不包含
+`JDCOS.bin` 的最大允许尺寸是 `0xf70000`（16,187,392 字节，即 15,808 KiB）。它不包含
 U-Boot、Config 或 Factory。Factory 保存本机 MAC 地址和 Wi-Fi 标定数据，绝不能
 用其他机器的备份替换。
 
@@ -240,27 +240,24 @@ sudo journalctl -fu tftpd-hpa
 1. 保持 SD 卡已插入，网线连接计算机与路由器 LAN 口。
 2. 打开 3.3 V 串口终端，参数设为 115200、8N1、无流控。
 3. 给路由器上电，在串口出现启动信息时按任意键中断自动启动。
-4. 先在 U-Boot 提示符核对恢复所需的网络环境：
+4. 在 U-Boot 提示符核对恢复命令和网络环境：
 
 ```text
-printenv bootcount bootlimit upgrade_available ipaddr serverip netmask
+printenv altbootcmd ipaddr serverip netmask
 ```
 
-应确认 `ipaddr=192.168.68.1`、`serverip=192.168.68.10` 和
-`netmask=255.255.255.0`。部分原厂版本会把 `bootlimit` 持久化为 `99999`；
-这种情况下只设置 `bootcount=6` 不会触发恢复。
-
-5. 执行以下命令，把启动上限设为该设备恢复流程使用的 5，然后触发超限启动：
+`altbootcmd` 应包含获取 `JDCOS.bin`、擦除并写入 `firmware` 分区的原厂恢复命令。
+执行以下命令设置本次会话使用的网络地址并直接运行它：
 
 ```text
-setenv bootlimit 5
-setenv bootcount 6
-setenv upgrade_available 1
-saveenv
-reset
+setenv ipaddr 192.168.68.1
+setenv serverip 192.168.68.10
+setenv netmask 255.255.255.0
+run altbootcmd
 ```
 
-重启后，原厂恢复逻辑会从 `192.168.68.10` 请求严格区分大小写的
+不要在这一步执行 `saveenv`。三个网络变量只影响当前 U-Boot 会话，不会改变后续
+正常启动条件。原厂恢复逻辑会立即从 `192.168.68.10` 请求严格区分大小写的
 `JDCOS.bin`，写入 `firmware` 分区，并在完成后自动重启。期间：
 
 - 不要断电、拔网线、关闭 TFTP 服务或操作复位键。
@@ -270,23 +267,51 @@ reset
 正确进入恢复分支时，串口应出现类似以下关键字：
 
 ```text
-Warning: Bootlimit (5) exceeded.
-Using altbootcmd.
 TFTP from server 192.168.68.10
 Filename 'JDCOS.bin'
 Recovering
 ```
 
-如果复位后再次出现 `upgradeFlag=2`，紧接着从 NOR `0x90000` 读取原厂 FIT
-镜像，并且完全没有 `TFTP` 字样，说明恢复分支仍未触发，而不是 TFTP Server
-下载失败。再次中断 U-Boot，用上述 `printenv` 命令确认保存后的 `bootlimit`
-和 `bootcount`。
-
 若 TFTP 没有请求，依次检查服务器地址是否确为 `192.168.68.10/24`、文件名、
 文件权限、网线是否接 LAN 口、防火墙和 `journalctl -fu tftpd-hpa` 日志。不要在
 原因未明时反复擦写 NOR。
 
-## 7. 首次启动与确认
+## 7. 恢复 U-Boot 正常启动
+
+旧版步骤曾通过保存 `bootlimit=5` 和 `bootcount=6` 触发恢复。刷写成功不会自动
+撤销这两个环境变量，因此设备可能在每次启动时继续执行 `altbootcmd` 并重复刷写。
+
+出现这种情况时，在串口上持续按键并重新上电，中断 U-Boot 自动启动，然后执行：
+
+```text
+printenv bootcmd bootcount bootlimit upgradeFlag
+setenv bootcmd jdboot
+setenv bootlimit 99999
+setenv bootcount 0
+saveenv
+printenv bootcmd bootcount bootlimit upgradeFlag
+reset
+```
+
+第二次 `printenv` 应显示：
+
+```text
+bootcmd=jdboot
+bootcount=0
+bootlimit=99999
+upgradeFlag=2
+```
+
+这里只恢复本机备份中已经确认的正常启动变量。不要删除 `altbootcmd`，不要修改
+`upgradeFlag`，也不要执行 `env default -a`；后两类操作可能破坏原厂恢复能力或
+设备特有环境数据。`saveenv` 只更新 64 KiB 的 Config/U-Boot 环境分区，不会重写
+U-Boot、Factory 或刚刷入的 firmware。
+
+恢复后，正常启动应直接出现 `upgradeFlag=2`，随后从 NOR `0x90000` 读取并启动
+ImmortalWrt，不再出现 `Using altbootcmd`、`Filename 'JDCOS.bin'` 或
+`Recovering`。
+
+## 8. 首次启动与确认
 
 首次启动时，NOR 上的初始化服务会验证 SD 镜像，将 NOR 当前 overlay 合并到
 SD 的 `upper/`，写入 extroot 配置并自动重启一次。第二次启动才进入完整的软件
@@ -304,7 +329,7 @@ logread | grep -i luban
 Nikki、Tailscale、qBittorrent 与共享目录。构建没有预置密码、订阅、凭据或下载
 目录。
 
-## 8. 停止本地 TFTP 服务
+## 9. 停止本地 TFTP 服务
 
 烧录完成后不再需要 TFTP：
 
