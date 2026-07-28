@@ -1,4 +1,17 @@
-# 请在下方输入自定义命令(一般用来安装第三方插件)(可以留空)
-# Please enter the custom command below (usually used to install third-party plugins) (can be left blank)
-# git clone --depth=1 https://github.com/EOYOHOO/UA2F.git package/UA2F
-# git clone --depth=1 https://github.com/EOYOHOO/rkp-ipid.git package/rkp-ipid
+#!/usr/bin/env bash
+set -euo pipefail
+
+device_dts="target/linux/ramips/dts/mt7621_jdcloud_re-cp-02.dts"
+device_makefile="target/linux/ramips/image/mt7621.mk"
+nikki_dir="package/nikki"
+
+test -f "$device_dts"
+grep -q "define Device/jdcloud_re-cp-02" "$device_makefile"
+grep -q 'reg = <0x90000 0xf70000>;' "$device_dts"
+grep -q '&sdhci' "$device_dts"
+
+test -f "$nikki_dir/nikki/Makefile"
+test -f "$nikki_dir/mihomo-meta/Makefile"
+test -f "$nikki_dir/luci-app-nikki/Makefile"
+
+echo "Using upstream jdcloud_re-cp-02 support and the pinned Nikki submodule."

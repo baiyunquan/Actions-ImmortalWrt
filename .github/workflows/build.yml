@@ -1,143 +1,152 @@
-name: 🚀 编译 (Build)
+name: Build JDCloud Luban ImmortalWrt
 
 on:
   workflow_dispatch:
-    inputs:
-      owner:
-        description: 'ImmortalWrt 仓库的拥有者 (Owner of ImmortalWrt repo)'
-        type: string
-        required: true
-        default: 'padavanonly'
-      repo:
-        description: 'ImmortalWrt 仓库的名字 (Name of ImmortalWrt repo)'
-        type: string
-        required: true
-        default: 'immortalwrtARM'
-      branch:
-        description: 'ImmortalWrt 仓库的分支 (Branch of ImmortalWrt repo)'
-        type: string
-        required: true
-        default: 'mt7986'
-      multithreading:
-        description: '开启多线程编译 (Enable multithreading build)'
-        type: boolean
-        default: true
-      ssh:
-        description: '使用 ssh 连接到编译环境 (Connect to the build environment using ssh)'
-        type: boolean
-        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: luban-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPOSITORY: immortalwrt/immortalwrt
+  SOURCE_REF: openwrt-25.12
+  TZ: Asia/Shanghai
 
 jobs:
   build:
-    if: ${{inputs.ssh == false}}
-    runs-on: ubuntu-latest
-    name: 🚀 编译 (Build)
+    name: ramips/mt7621 jdcloud_re-cp-02
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
     steps:
-      - name: 下载编译所需的依赖 (Install the software packages required for compilation)
-        run: |
-          sudo apt update
-          sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-
-      - name: 克隆当前仓库 (Clone current repo)
-        uses: actions/checkout@v4
-
-      - name: 克隆 ImmortalWrt 仓库 (Clone ImmortalWrt repo)
+      - name: Checkout build configuration and Nikki
         uses: actions/checkout@v4
         with:
-          repository: '${{inputs.owner}}/${{inputs.repo}}'
-          ref: ${{inputs.branch}}
-          path: ImmortalWrt
+          submodules: recursive
 
-      - name: 复制当前仓库的配置文件到 ImmortalWrt 仓库  (Copy current repo config to ImmortalWrt repo)
-        run: cp -f .config feeds.conf.default diy.sh ImmortalWrt/
-
-      - name: 运行 diy.sh (Run diy.sh)
-        working-directory: ImmortalWrt
+      - name: Validate repository scripts
         run: |
-          chmod +x diy.sh
+          bash -n diy.sh scripts/*.sh
+          sh -n files/etc/init.d/luban-extroot
+          test -f package/nikki/nikki/Makefile
+          test -f package/nikki/mihomo-meta/Makefile
+          test -f package/nikki/luci-app-nikki/Makefile
+
+      - name: Install build and image tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang flex bison g++ gawk gcc-multilib \
+            g++-multilib gettext git libncurses-dev libssl-dev \
+            python3 python3-pyelftools python3-setuptools rsync swig \
+            unzip zlib1g-dev file wget curl libelf-dev device-tree-compiler \
+            qemu-utils dosfstools e2fsprogs fdisk mtools pigz zstd fakeroot
+
+      - name: Checkout ImmortalWrt 25.12
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ env.SOURCE_REF }}
+          path: ImmortalWrt
+          fetch-depth: 1
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: ImmortalWrt/dl
+          key: luban-dl-${{ runner.os }}-${{ hashFiles('feeds.conf.default', '.config', '.gitmodules', 'package/nikki/**') }}
+          restore-keys: |
+            luban-dl-${{ runner.os }}-
+
+      - name: Prepare feeds, Nikki, files, and configuration
+        run: |
+          cp feeds.conf.default ImmortalWrt/feeds.conf.default
+          rm -rf ImmortalWrt/package/nikki ImmortalWrt/files
+          mkdir -p ImmortalWrt/package/nikki
+          rsync -a --exclude=.git package/nikki/ ImmortalWrt/package/nikki/
+          cp -a files ImmortalWrt/files
+          cp diy.sh ImmortalWrt/diy.sh
+          chmod +x ImmortalWrt/diy.sh
+          cd ImmortalWrt
           ./diy.sh
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          cp "$GITHUB_WORKSPACE/.config" .config
+          make defconfig
 
-      - name: 更新并下载 feeds (Update and download feeds)
+      - name: Validate resolved NOR configuration
         working-directory: ImmortalWrt
-        run: ./scripts/feeds update -a && ./scripts/feeds install -a
-
-      - name: 再次复制当前仓库的配置文件到 ImmortalWrt 仓库 (Copy current repo config to ImmortalWrt repo again)
-        run: cp -f .config feeds.conf.default diy.sh ImmortalWrt/
-
-      - name: 编译前上传配置 (Upload config before build)
-        uses: actions/upload-artifact@v4
-        with:
-          name: config-before-build
-          path: |
-            ImmortalWrt/feeds.conf.default
-            ImmortalWrt/.config
-
-      - name: 多线程编译 ImmortalWrt (Build ImmortalWrt multithreading)
-        if: ${{inputs.multithreading == true}}
-        working-directory: ImmortalWrt
-        run: make -j$(nproc) V=s
-
-      - name: 单线程编译 ImmortalWrt (Build ImmortalWrt single thread)
-        if: ${{inputs.multithreading == false}}
-        working-directory: ImmortalWrt
-        run: make -j1 V=s
-
-      - name: 上传编译结果到 Artifact (Upload build result to Artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ImmortalWrt-build-result
-          path: ImmortalWrt/bin/targets
-
-  build-ssh:
-    if: ${{inputs.ssh == true}}
-    name: 🚀 编译 (Build) - SSH
-    runs-on: ubuntu-latest
-    steps:
-      - name: 下载编译所需的依赖 (Install the software packages required for compilation)
         run: |
-          sudo apt update
-          sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          grep -qx 'CONFIG_TARGET_ramips_mt7621_DEVICE_jdcloud_re-cp-02=y' .config
+          grep -qx 'CONFIG_TARGET_ROOTFS_SQUASHFS=y' .config
+          grep -qx 'CONFIG_USE_APK=y' .config
+          grep -qx 'CONFIG_PACKAGE_block-mount=y' .config
+          grep -qx 'CONFIG_PACKAGE_kmod-fs-ext4=y' .config
+          for package_name in \
+            filebrowser luci-app-filebrowser luci-app-homeproxy \
+            luci-app-tailscale-community luci-app-samba4 qbittorrent \
+            luci-app-qbittorrent mihomo-meta nikki luci-app-nikki; do
+            grep -Eq "^CONFIG_PACKAGE_${package_name}=[my]$" .config
+          done
+          ! grep -q '^CONFIG_PACKAGE_luci-app-filebrowser-go=' .config
+          test -f package/nikki/nikki/Makefile
+          test -f package/nikki/mihomo-meta/Makefile
+          test -f package/nikki/luci-app-nikki/Makefile
 
-      - name: 克隆当前仓库 (Clone current repo)
-        uses: actions/checkout@v4
+      - name: Download sources
+        working-directory: ImmortalWrt
+        run: |
+          make download -j8
+          find dl -type f -size -1024c -print -delete
 
-      - name: 克隆 ImmortalWrt 仓库 (Clone ImmortalWrt repo)
-        uses: actions/checkout@v4
-        with:
-          repository: '${{inputs.owner}}/${{inputs.repo}}'
-          ref: ${{inputs.branch}}
-          path: ImmortalWrt
+      - name: Build minimal NOR firmware and all APK modules
+        working-directory: ImmortalWrt
+        run: |
+          make -j"$(nproc)" || make -j1 V=s
 
-      - name: 开启 SSH 服务 (Start SSH service)
-        uses: lhotari/action-upterm@v1
-        with:
-          wait-timeout-minutes: 20
+      - name: Record minimal build and source revisions
+        run: |
+          mkdir -p build-metadata
+          cp ImmortalWrt/.config build-metadata/config.nor
+          git -C ImmortalWrt rev-parse HEAD > build-metadata/IMMORTALWRT_COMMIT
+          git -C package/nikki rev-parse HEAD > build-metadata/NIKKI_COMMIT
+          : > build-metadata/FEED_COMMITS
+          for feed_dir in ImmortalWrt/feeds/*; do
+            test -d "$feed_dir" || continue
+            printf '%s %s\n' \
+              "$(basename "$feed_dir")" \
+              "$(git -C "$feed_dir" rev-parse HEAD)" \
+              >> build-metadata/FEED_COMMITS
+          done
 
-#      # 你也可以使用这个，个人觉得它更好用 (You can use this, I personally think it is better)
-#      - name: 开启 SSH 服务 (Start SSH service)
-#        uses: mxschmitt/action-tmate@v3
-#        timeout-minutes: 15
+      - name: Assemble pre-expanded extroot
+        run: |
+          chmod +x scripts/*.sh
+          scripts/build-rich-rootfs.sh \
+            "$GITHUB_WORKSPACE/ImmortalWrt" \
+            "$GITHUB_WORKSPACE/extroot-stage" \
+            "$GITHUB_WORKSPACE/build-metadata"
 
-      - name: 编译前上传配置 (Upload config before build)
+      - name: Build and validate release bundle
+        run: |
+          scripts/collect-artifacts.sh \
+            "$GITHUB_WORKSPACE/ImmortalWrt" \
+            "$GITHUB_WORKSPACE/extroot-stage" \
+            "$GITHUB_WORKSPACE/build-metadata" \
+            "$GITHUB_WORKSPACE/output"
+          test -s output/JDCOS.bin
+          test -s output/luban-sd-extroot.img.gz
+          (cd output && sha256sum -c SHA256SUMS)
+
+      - name: Upload two-image release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: config-before-build
-          path: |
-            ImmortalWrt/feeds.conf.default
-            ImmortalWrt/.config
-
-      - name: 多线程编译 ImmortalWrt (Build ImmortalWrt multithreading)
-        if: ${{inputs.multithreading == true}}
-        working-directory: ImmortalWrt
-        run: make -j$(nproc) V=s
-
-      - name: 单线程编译 ImmortalWrt (Build ImmortalWrt single thread)
-        if: ${{inputs.multithreading == false}}
-        working-directory: ImmortalWrt
-        run: make -j1 V=s
-
-      - name: 上传编译结果到 Artifact (Upload build result to Artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ImmortalWrt-build-result
-          path: ImmortalWrt/bin/targets
+          name: jdcloud-luban-immortalwrt-${{ github.run_number }}
+          path: output/
+          if-no-files-found: error
+          compression-level: 0

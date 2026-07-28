@@ -1,153 +1,124 @@
-# ImmortalWrt 自动编译
+# 京东云鲁班 RE-CP-02 ImmortalWrt 双镜像
 
-## 使用步骤
+本仓库通过 GitHub Actions 为京东云鲁班 AX1800（JDCloud RE-CP-02）
+构建 ImmortalWrt 25.12。设备支持直接使用 ImmortalWrt 上游设备树，不应用旧版
+第三方 `jdcloud_luban` 补丁。
 
-### 正常流程
+构建将 16 MiB SPI NOR 作为精简、可独立启动的主系统，把完整应用环境预展开到
+SD/TF 卡上的 extroot。Nikki 以 git submodule 固定源码版本，并在同一构建树中现场
+编译。
 
-1. (必须) fork 本仓库
-2. (必须) 上传 `.config` 文件与 `feeds.conf.default` 文件到此仓库
-3. (可选) 编辑仓库内的 `diy.sh` 文件，可以自定义编译前的命令，一般使用 git clone 来克隆需要使用到的第三方插件
-4. - 进入本仓库的 Actions 页面
-   - 在左侧选择 `🚀 编译 (Build)`
-   - 右侧点击 Run workflow
-   - 填入需要编译的仓库的信息
-   - 最后点击绿色的 Run workflow![run-workflow](img/run-workflow.png)
-5. 等待编译完成，大约需要 2-3 小时
-6. ![Build success](img/build-success.png)当页面像这样显示绿色的✅的时候，就说明编译完成了，点击进去到这个界面![build-result](img/build-result.png)找到 ImmortalWrt-build-result ，就是编译后的固件了。直接点击下载就可以
+## 构建产物
 
-### 通过 SSH 连接到 Github Actions 进行编译
+在 GitHub 仓库的 Actions 页面手动运行 **Build JDCloud Luban ImmortalWrt**。
+下载的 artifact 包含两个可刷写镜像：
 
-和正常流程几乎没有区别，只是可以省下自己开 codespaces 编译的时间，比较方便一点 (注意：此过程中自己上传的 `.config` 和 `feeds.conf.default` 不会自动复制到对应目录，`diy.sh` 也不会自动执行。但是你可以在连接到编译环境以后自己手动复制和修改)
+- `JDCOS.bin`：官方 squashfs sysupgrade 镜像的 U-Boot 恢复命名，用于 SPI NOR。
+- `luban-sd-extroot.img.gz`：由计算机整盘写入 SD/TF 卡的 GPT 镜像。
 
-1. (必须) fork 本仓库
+同时附带：
 
-2. (必须) 上传 `.config` 文件与 `feeds.conf.default` 文件到此仓库
+- `SHA256SUMS`
+- `NOR_MANIFEST` 与 `EXTROOT_MANIFEST`
+- `SYSUPGRADE_METADATA.json`
+- `config.nor` 与 `config.extroot`
+- ImmortalWrt、feeds 和 Nikki 的实际构建提交号
 
-3. (可选) 编辑仓库内的 `diy.sh` 文件，可以自定义编译前的命令，一般使用 git clone 来克隆需要使用到的第三方插件
+`JDCOS.bin` 只覆盖官方设备树定义的 firmware 分区，不包含 U-Boot、Config 或每台
+设备唯一的 Factory/Wi-Fi 标定数据。
 
-4. - 进入本仓库的 Actions 页面
-   - 在左侧选择 `🚀 编译 (Build)`
-   - 右侧点击 Run workflow
-   - 填入需要编译的仓库的信息
-   - 把 **使用 ssh 连接到编译环境** 勾选上
-   - 最后点击绿色的 Run workflow![ssh-run](img/ssh-run.png)
+## 软件布局
 
-5. 原地等待 10 秒，进入正在运行的 workflow![goto-workflow](img/goto-workflow.png)
+NOR 中只保留启动、网络、LuCI、中文基础界面、SD/MMC、ext4 和 extroot 所需组件。
 
-6. 点击左侧 `🚀 编译 (Build) - SSH` ![goto-ssh-log](img/goto-ssh-log.png)
+SD extroot 中预装：
 
-7. 找到 `开启 SSH 服务` 并展开，然后复制里面的 ssh session ，用自己的终端执行就可以连上了 (这里的 ssh session 都是一样的，随便找一个复制就行)![get-ssh-session](img/get-ssh-session.png)
+- 防火墙、Argon 配置、软件包管理器、ttyd 及中文翻译
+- HomeProxy、WireGuard、Tailscale Community、VLMCSd 及中文翻译
+- FileBrowser daemon、`luci-app-filebrowser` 及中文翻译
+- Samba 4
+- qBittorrent、LuCI 配置页及中文翻译
+- Nikki、LuCI、中文翻译、Mihomo 及完整依赖
 
-8. 连接成功以后，执行以下命令
+没有安装 `luci-app-filebrowser-go`。它和 `luci-app-filebrowser` 会提供同名 ACL
+文件，本构建按约定保留后者；FileBrowser daemon 仍然存在，并可使用自身 WebUI。
 
-   ```shell
-   cd ImmortalWrt && ./scripts/feeds update -a && ./scripts/feeds install -a && make menuconfig
-   ```
+## SD 镜像布局
 
-9. 根据自己的需要来定制 config![make-config](img/make-config.png)
+镜像使用 GPT：
 
-10. 保存以后会回到终端，**输入 `exit`  来退出 ssh**，退出以后会自动开始编译
+1. 100 MiB FAT32，卷标 `LUBANBOOT`，包含 `JDCOS.bin`、说明和校验值。
+2. 固定 2 GiB ext4，卷标 `luban-extroot`，UUID
+   `7fdb0d8a-01b5-4ab3-a5ac-431000000002`，保存预展开的 overlay。
 
-11. 等待编译完成，大约需要 2-3 小时
+写入更大的卡后，剩余容量保持未分配。此 2 GiB 分区用于系统和应用，不适合作为
+qBittorrent 大容量下载目录；下载和 Samba 数据应使用另外挂载的存储。
 
-12. ![Build success](img/build-success.png)当页面像这样显示绿色的✅的时候，就说明编译完成了，点击进去到这个界面![build-result](img/build-result.png)找到 ImmortalWrt-build-result ，就是编译后的固件了。直接点击下载就可以
+## 刷写前备份
 
-## 如何定制 config 和 feeds：
+刷机前至少保存以下内容并核对校验值：
 
-1. 克隆对应分支的 openwrt 仓库(可以使用自己的 ubuntu 系统，教程里是利用免费的 github codespaces 进行定制)
+- 完整 16 MiB NOR
+- `mtd0` U-Boot
+- `mtd1` Config
+- `mtd2` Factory
+- 当前原厂 firmware
+- 原 SD/eMMC 分区表和需要保留的数据
 
-2. 下载第三方插件，如
-   ```shell
-   git clone --depth=1 https://github.com/EOYOHOO/UA2F.git package/UA2F
-   git clone --depth=1 https://github.com/EOYOHOO/rkp-ipid.git package/rkp-ipid
-   ```
+其中 Factory 包含本机 MAC 地址和 Wi-Fi 标定，不能由其他设备的备份替代。
 
-3. 更新 feeds
-   ```shell
-   ./scripts/feeds update -a && ./scripts/feeds install -a
-   ```
+## 写入 SD/TF 卡
 
-4. 定制config，先输入
-   ```shell
-   make menuconfig
-   ```
-   会弹出插件配置界面，选择对应的 `Target System` ， `Subtarget` ， `Target Profile` ， 注意， `Target Profile` 必须精确到对应的设备名，否则理论上不兼容
+先核对下载文件：
 
-5. 继续选择需要安装的插件，上下箭头移动，左右箭头切换底部选项卡，回车为选择进入，对着插件按空格会将插件前的标识变为 `M` ，再按一下空格会变成 `*` ，变成 `*` 才代表此插件被选中安装
+```sh
+sha256sum -c SHA256SUMS
+```
 
-6. 选择好需要的插件以后，用左右箭头切换到 `save` 选项卡按回车保存
+Linux 写卡示例：
 
-7. 输入命令
-   ```shell
-   zip conf.zip feeds.conf.default .config
-   ```
-   会将 `feeds.conf.default` 与 `.config` 两个文件压缩为 `conf.zip` ，将 `conf.zip` 下载到本地，然后解压可以得到自己定制好的 config 和 feed 啦
+```sh
+gzip -dc luban-sd-extroot.img.gz |
+  sudo dd of=/dev/sdX bs=4M iflag=fullblock conv=fsync status=progress
+```
 
-## 编译之如何单独编译某一个模块
+`/dev/sdX` 必须替换为整张 SD 卡，而不是某个分区。此操作会覆盖目标卡现有分区表
+和数据。Windows 可使用能够写入压缩 raw image 的镜像工具。
 
-1. 想单独编译某一个模块，前提是你当前的环境已经编译过一次**完整的 openwrt 固件**才行，因为编译完整的 openwrt 固件时，它会自动编译工具链，没有工具链就没法单独编译模块，这一点你必须清楚地了解。如果你的当前环境已经编译过**完整的 openwrt 固件**了，但是还是显示缺少依赖，那么很抱歉，只能从头编译了
+## 通过原厂 U-Boot 写入 NOR
 
-2. 确保你已经编译过一次完整的 openwrt 之后，先克隆对应仓库的地址到 package 文件夹下，格式如下：
-   ```shell
-   git clone --depth=1 仓库地址 package/项目名称
-   ```
+在地址 `192.168.68.10` 的计算机上启动 TFTP 服务，并把 `JDCOS.bin` 放到 TFTP
+根目录。使用 3.3 V、115200 波特率串口中断 U-Boot，按原厂恢复逻辑执行：
 
-   例子：
-   ```shell
-   git clone --depth=1 https://github.com/iv7777/luci-app-pptp-server package/luci-app-pptp-server
-   ```
+```text
+setenv bootcount 6
+saveenv
+reset
+```
 
-3. 先清空下之前编译的残留物 `make clean`
+设备重启后会请求 `JDCOS.bin` 并写入 firmware 分区。不要使用整片 NOR 写入命令，
+也不要擦除 U-Boot、Config 或 Factory。
 
-4. 更新feeds
-   ```shell
-   ./scripts/feeds update -a && ./scripts/feeds install -a
-   ```
+## 首次启动
 
-5. 执行 `make menuconfig` ，选择对应的 Target System，Subtarget，Target Profile
+建议先写好 SD 卡并插入路由器，再刷写 `JDCOS.bin`。
 
-6. 找到对应的模块的位置，将其选定，标记为M，M代表以模块方式编译，这样我们就不需要编译整个 openwrt 也可以编译出 ipk 文件啦。如图所示，选中以后记得选择 Save 来保存哦![mod](img/mod.jpg)
+第一次启动时，NOR 系统会：
 
-7. 开始编译吧，格式如下：
-    ```shell
-    make package/项目名称/compile V=s
-    ```
+1. 查找卷标和 UUID 都匹配的 extroot。
+2. 验证镜像准备标记。
+3. 将 NOR 当前 overlay 合并到 SD 的预展开 `upper/`。
+4. 在 SD 和 NOR 中写入 extroot 配置。
+5. 同步文件系统并自动重启。
 
-   例子：
-   ```shell
-   make package/luci-app-pptp-server/compile V=s
-   ```
+第二次启动后，完整应用环境直接来自 SD。流程可重复执行；如果准备阶段断电，在
+NOR 尚未启用切换时会自动重试。
 
-## 我常用的一些插件
+默认管理地址和首次登录策略保持 ImmortalWrt 默认值，未预置密码、代理订阅、
+Tailscale 凭据或 qBittorrent 下载目录。
 
-1. luci-theme-argon-new(openwrt网页主题)
+## 回滚
 
-2. luci-app-openclash(科学上网)
-
-3. luci-app-sqm(智能网速控制)
-
-4. luci-app-ttyd(网页终端)
-
-5. luci-app-upnp(自动upnp)
-
-[//]: # (Kernel Modules->Other modules->kmod-rkp-ipid)
-
-[//]: # (Kernel Modules->Netfilter Extensions->kmod-ipt-u32)
-
-[//]: # (Network->Routing and Redirection->ua2f)
-
-[//]: # (Network->SSH->openssh-sftp-server)
-
-[//]: # (Network->Firewall->iptables-mod-filter)
-
-[//]: # (Network->Firewall->iptables-mod-u32)
-
-[//]: # (Luci->Theme->luci-theme-argon-new)
-
-[//]: # (Luci->Applications->luci-app-openclash)
-
-[//]: # (Luci->Applications->luci-app-ttyd)
-
-[//]: # (Luci->Applications->luci-app-upnp)
-
-[//]: # (记得最后搜索 Netfilter Extensions 加上 CONFIG_NETFILTER_NETLINK_GLUE_CT=y)
+先通过 U-Boot/TFTP 将已验证的原厂 firmware 作为 `JDCOS.bin` 恢复到 firmware
+分区。如需完全恢复原机状态，再用备份镜像恢复原 SD/eMMC 分区布局。正常回滚不应
+写入其他设备的 Factory 分区。

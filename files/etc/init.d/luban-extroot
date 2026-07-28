@@ -1,0 +1,131 @@
+#!/bin/sh /etc/rc.common
+# shellcheck disable=SC2034,SC3043
+
+START=96
+USE_PROCD=0
+
+EXTROOT_LABEL="luban-extroot"
+EXTROOT_UUID="7fdb0d8a-01b5-4ab3-a5ac-431000000002"
+EXTROOT_MOUNT="/tmp/luban-extroot"
+IMAGE_MARKER="etc/luban/extroot-image-ready"
+ACTIVE_MARKER="etc/luban/extroot-initialized"
+
+log() {
+	logger -t luban-extroot "$*"
+}
+
+find_extroot_device() {
+	block info | awk \
+		-v uuid="UUID=\"$EXTROOT_UUID\"" \
+		-v label="LABEL=\"$EXTROOT_LABEL\"" '
+			index($0, uuid) && index($0, label) {
+				sub(/:.*/, "", $0)
+				print
+				exit
+			}
+		'
+}
+
+configure_fstab() {
+	local config_dir="$1"
+
+	uci -q -c "$config_dir" delete fstab.luban_extroot >/dev/null 2>&1 || true
+	uci -q -c "$config_dir" batch <<-EOF
+		set fstab.luban_extroot='mount'
+		set fstab.luban_extroot.target='/overlay'
+		set fstab.luban_extroot.uuid='$EXTROOT_UUID'
+		set fstab.luban_extroot.fstype='ext4'
+		set fstab.luban_extroot.options='rw,noatime'
+		set fstab.luban_extroot.enabled='1'
+		set fstab.luban_extroot.enabled_fsck='1'
+		commit fstab
+	EOF
+}
+
+is_active_device() {
+	local device="$1"
+
+	awk -v device="$device" \
+		'$1 == device && $2 == "/overlay" { found = 1 } END { exit !found }' \
+		/proc/mounts
+}
+
+unmount_automounts() {
+	local device="$1"
+	local mounted_at
+
+	awk -v device="$device" \
+		'$1 == device && $2 != "/overlay" { print $2 }' /proc/mounts |
+	while IFS= read -r mounted_at; do
+		[ -n "$mounted_at" ] || continue
+		umount "$mounted_at" || return 1
+	done
+}
+
+start() {
+	[ -e "/$ACTIVE_MARKER" ] && return 0
+
+	local device
+	device="$(find_extroot_device)"
+	if [ -z "$device" ]; then
+		log "prepared SD extroot not found; keeping the NOR overlay"
+		return 0
+	fi
+
+	if is_active_device "$device"; then
+		mkdir -p "/${ACTIVE_MARKER%/*}"
+		touch "/$ACTIVE_MARKER"
+		log "extroot is already active; repaired the completion marker"
+		return 0
+	fi
+
+	unmount_automounts "$device" || {
+		log "cannot unmount an automatic mount of $device"
+		return 1
+	}
+
+	rm -rf "$EXTROOT_MOUNT"
+	mkdir -p "$EXTROOT_MOUNT"
+	mount -t ext4 -o rw,noatime "$device" "$EXTROOT_MOUNT" || {
+		log "cannot mount prepared extroot $device"
+		return 1
+	}
+
+	if [ ! -e "$EXTROOT_MOUNT/upper/$IMAGE_MARKER" ]; then
+		log "$device is not the prepared Luban extroot image"
+		umount "$EXTROOT_MOUNT"
+		return 1
+	fi
+
+	mkdir -p "$EXTROOT_MOUNT/upper" "$EXTROOT_MOUNT/work"
+	if [ -d /overlay/upper ]; then
+		tar -C /overlay/upper -cf - . |
+			tar -C "$EXTROOT_MOUNT/upper" -xf - || {
+				log "failed to merge the current NOR overlay"
+				umount "$EXTROOT_MOUNT"
+				return 1
+			}
+	fi
+
+	configure_fstab "$EXTROOT_MOUNT/upper/etc/config" || {
+		log "failed to write the extroot fstab into the SD overlay"
+		umount "$EXTROOT_MOUNT"
+		return 1
+	}
+
+	mkdir -p "$EXTROOT_MOUNT/upper/${ACTIVE_MARKER%/*}"
+	touch "$EXTROOT_MOUNT/upper/$ACTIVE_MARKER"
+	sync
+	umount "$EXTROOT_MOUNT" || return 1
+
+	# Enable the NOR-side handoff only after the SD overlay is complete. A
+	# power loss before this point simply causes the preparation to be retried.
+	configure_fstab /etc/config || {
+		log "failed to enable the NOR-side extroot handoff"
+		return 1
+	}
+
+	sync
+	log "prepared $device as extroot; rebooting"
+	reboot
+}
