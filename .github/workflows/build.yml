@@ -147,7 +147,7 @@ jobs:
       - name: Build selected Go proxy cores serially
         working-directory: ImmortalWrt
         run: |
-          make package/feeds/packages/sing-box/compile -j1 V=s
+          make package/feeds/passwall_packages/sing-box/compile -j1 V=s
           make package/feeds/passwall_packages/xray-core/compile -j1 V=s
 
       - name: Build minimal NOR firmware and all APK modules
