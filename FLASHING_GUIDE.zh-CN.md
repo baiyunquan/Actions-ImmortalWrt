@@ -352,7 +352,105 @@ cat /proc/partitions
 
 确实需要修改分区表时，等 extroot 和网络正常后再执行 `apk update && apk add fdisk`。
 
-## 9. 停止本地 TFTP 服务
+## 9. 后续升级
+
+### 9.1 升级原则
+
+每次 GitHub Actions 构建都会同时生成一组相互匹配的 `JDCOS.bin` 和
+`luban-sd-extroot.img.gz`。NOR 提供内核和基础系统，SD extroot 提供完整用户空间；
+升级时必须使用同一次 Actions 运行中的两个镜像。不要将新 NOR 与旧 SD，或旧 NOR
+与新 SD 长期混用，否则内核模块、共享库和应用版本可能不兼容。
+
+不建议对本设备执行无差别的 `apk upgrade`。安装或更新单个普通应用可以使用
+`apk add <package>`，但内核、基础库或大批软件升级应通过新的成对镜像完成。
+
+### 9.2 升级前备份
+
+先确认当前系统确实从 SD 使用 extroot：
+
+```sh
+mount | grep ' /overlay '
+df -h /overlay
+```
+
+在路由器上创建配置备份，并记录已安装软件：
+
+```sh
+sysupgrade -k -b /tmp/luban-upgrade-backup.tar.gz
+apk list --installed > /tmp/luban-installed-packages.txt
+```
+
+然后在计算机上取回文件：
+
+```sh
+scp root@192.168.1.1:/tmp/luban-upgrade-backup.tar.gz .
+scp root@192.168.1.1:/tmp/luban-installed-packages.txt .
+```
+
+备份包含系统配置，但不应被视为下载数据、共享目录或其他用户文件的副本。升级前
+仍需单独备份这些数据。不要把旧的完整 SD `upper/` 目录直接覆盖到新镜像；这样会
+把旧版程序和共享库一起带回。
+
+### 9.3 推荐的完整升级
+
+1. 从同一次 GitHub Actions 运行下载完整产物，执行 `sha256sum -c SHA256SUMS`。
+2. 按第 4 节将新的 `luban-sd-extroot.img.gz` 写入备用 SD 卡。使用备用卡可以保留
+   旧系统作为回退；若重写原卡，其全部分区和数据都会被覆盖。
+3. 将同一产物中的新 `JDCOS.bin` 放入 TFTP 目录，并按第 5 节验证文件。
+4. 关闭路由器电源，插入写好的新 SD 卡，通过串口进入 U-Boot。
+5. 按第 6 节设置临时网络变量并执行 `run altbootcmd`。不要执行 `saveenv`，不要
+   擦写 U-Boot、Config 或 Factory。
+6. 写入完成后让设备正常启动。首次启动可能因准备 extroot 自动重启一次，等待第二次
+   启动完成后再登录。
+7. 按第 8 节确认 `/overlay` 来自 `/dev/mmcblk0p2`，并核对 LuCI 和网络。
+
+新系统确认正常后，将备份传回路由器并恢复：
+
+```sh
+scp luban-upgrade-backup.tar.gz \
+  root@192.168.1.1:/tmp/luban-upgrade-backup.tar.gz
+ssh root@192.168.1.1 \
+  'sysupgrade -r /tmp/luban-upgrade-backup.tar.gz && reboot'
+```
+
+恢复后检查网络、挂载和所需服务。若旧备份中的某项配置与新版软件不兼容，只恢复
+对应的 UCI 配置，不要把旧版可执行文件或库复制回系统。至少保留旧 SD 卡和上一版
+完整 Actions 产物，直到新版稳定运行。
+
+### 9.4 只更新 NOR 或只重写 SD
+
+`JDCOS.bin` 本质上是带设备元数据的 sysupgrade 镜像，可以先执行
+`sysupgrade -T /tmp/JDCOS.bin` 检查，再通过 LuCI 或 `sysupgrade` 写入。但是在
+extroot 正在使用时单独升级 NOR，重启后仍会加载旧 SD 用户空间，因此不适合作为
+本设备的常规升级方式。
+
+确实只需修复 NOR 时，应先关机并取出 SD 卡，从独立的精简 NOR 系统启动，再执行：
+
+```sh
+scp JDCOS.bin root@192.168.1.1:/tmp/JDCOS.bin
+ssh root@192.168.1.1 'sysupgrade -T /tmp/JDCOS.bin'
+ssh root@192.168.1.1 'sysupgrade -n /tmp/JDCOS.bin'
+```
+
+升级期间 SSH 会断开，等待设备自行重启，不能断电。NOR-only 启动只提供精简系统；
+重新插入 SD 前，应确保该卡来自同一次构建。
+
+只重写 SD 仅适用于修复同一版本的 extroot，或者随后立即把 NOR 升级为同一次构建
+的 `JDCOS.bin`。不要让不同构建批次的 NOR 和 SD 继续运行。
+
+### 9.5 升级后核对
+
+```sh
+mount | grep ' /overlay '
+df -h /overlay
+cat /etc/openwrt_release
+logread | grep -i -E 'luban|extroot'
+```
+
+还应确认 `/overlay` 来自 `/dev/mmcblk0p2`、LuCI 可以登录、LAN/WAN 和无线正常，
+再启用 Nikki、Tailscale、Samba、qBittorrent 等可选服务。
+
+## 10. 停止本地 TFTP 服务
 
 烧录完成后不再需要 TFTP：
 
