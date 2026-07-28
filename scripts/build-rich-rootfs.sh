@@ -11,6 +11,7 @@ stage_dir="$(realpath -m "$2")"
 metadata_dir="$(realpath -m "$3")"
 
 rich_packages=(
+	fdisk
 	luci-app-firewall
 	luci-i18n-firewall-zh-cn
 	filebrowser
