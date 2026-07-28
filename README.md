@@ -94,10 +94,15 @@ gzip -dc luban-sd-extroot.img.gz |
 根目录。使用 3.3 V、115200 波特率串口中断 U-Boot，按原厂恢复逻辑执行：
 
 ```text
+setenv bootlimit 5
 setenv bootcount 6
+setenv upgrade_available 1
 saveenv
 reset
 ```
+
+部分原厂环境将 `bootlimit` 设为 `99999`；只修改 `bootcount` 时不会进入网络
+恢复。执行前可用 `printenv bootcount bootlimit ipaddr serverip` 核对。
 
 设备重启后会请求 `JDCOS.bin` 并写入 firmware 分区。不要使用整片 NOR 写入命令，
 也不要擦除 U-Boot、Config 或 Factory。

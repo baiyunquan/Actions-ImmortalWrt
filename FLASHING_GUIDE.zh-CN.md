@@ -5,7 +5,7 @@
 - `JDCOS.bin`：写入 16 MiB SPI NOR 中的 `firmware` 分区。
 - `luban-sd-extroot.img.gz`：在另一台计算机上整盘写入 SD/TF 卡。
 
-`JDCOS.bin` 的最大允许尺寸是 `0xf70000`（16,187,392 字节，即 15,808 KiB）。它不包含
+`JDCOS.bin` 的最大允许尺寸是 `0xf70000`（15,990,784 字节）。它不包含
 U-Boot、Config 或 Factory。Factory 保存本机 MAC 地址和 Wi-Fi 标定数据，绝不能
 用其他机器的备份替换。
 
@@ -240,10 +240,22 @@ sudo journalctl -fu tftpd-hpa
 1. 保持 SD 卡已插入，网线连接计算机与路由器 LAN 口。
 2. 打开 3.3 V 串口终端，参数设为 115200、8N1、无流控。
 3. 给路由器上电，在串口出现启动信息时按任意键中断自动启动。
-4. 在 U-Boot 提示符执行：
+4. 先在 U-Boot 提示符核对恢复所需的网络环境：
 
 ```text
+printenv bootcount bootlimit upgrade_available ipaddr serverip netmask
+```
+
+应确认 `ipaddr=192.168.68.1`、`serverip=192.168.68.10` 和
+`netmask=255.255.255.0`。部分原厂版本会把 `bootlimit` 持久化为 `99999`；
+这种情况下只设置 `bootcount=6` 不会触发恢复。
+
+5. 执行以下命令，把启动上限设为该设备恢复流程使用的 5，然后触发超限启动：
+
+```text
+setenv bootlimit 5
 setenv bootcount 6
+setenv upgrade_available 1
 saveenv
 reset
 ```
@@ -254,6 +266,21 @@ reset
 - 不要断电、拔网线、关闭 TFTP 服务或操作复位键。
 - 不要执行整片 NOR 的 `erase`、`cp.b` 或其他手工写入命令。
 - 不要写入或擦除 U-Boot、Config、Factory。
+
+正确进入恢复分支时，串口应出现类似以下关键字：
+
+```text
+Warning: Bootlimit (5) exceeded.
+Using altbootcmd.
+TFTP from server 192.168.68.10
+Filename 'JDCOS.bin'
+Recovering
+```
+
+如果复位后再次出现 `upgradeFlag=2`，紧接着从 NOR `0x90000` 读取原厂 FIT
+镜像，并且完全没有 `TFTP` 字样，说明恢复分支仍未触发，而不是 TFTP Server
+下载失败。再次中断 U-Boot，用上述 `printenv` 命令确认保存后的 `bootlimit`
+和 `bootcount`。
 
 若 TFTP 没有请求，依次检查服务器地址是否确为 `192.168.68.10/24`、文件名、
 文件权限、网线是否接 LAN 口、防火墙和 `journalctl -fu tftpd-hpa` 日志。不要在
