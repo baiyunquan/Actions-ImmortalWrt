@@ -31,6 +31,8 @@ jobs:
         run: |
           bash -n diy.sh scripts/*.sh
           sh -n files/etc/init.d/luban-extroot
+          test "$(readlink files/etc/rc.d/S96luban-extroot)" = \
+            "../init.d/luban-extroot"
           test -f package/nikki/nikki/Makefile
           test -f package/nikki/mihomo-meta/Makefile
           test -f package/nikki/luci-app-nikki/Makefile

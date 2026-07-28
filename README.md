@@ -131,6 +131,10 @@ reset
 第二次启动后，完整应用环境直接来自 SD。流程可重复执行；如果准备阶段断电，在
 NOR 尚未启用切换时会自动重试。
 
+若 SD 分区已自动挂到 `/mnt/mmcblk0p2`，但 `/overlay` 仍是 NOR，可执行
+`/etc/init.d/luban-extroot enable` 和 `/etc/init.d/luban-extroot start` 修复旧版
+镜像中缺少启动链接的问题。当前构建已默认启用该服务。
+
 默认管理地址和首次登录策略保持 ImmortalWrt 默认值，未预置密码、代理订阅、
 Tailscale 凭据或 qBittorrent 下载目录。
 

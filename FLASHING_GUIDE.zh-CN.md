@@ -329,6 +329,29 @@ logread | grep -i luban
 Nikki、Tailscale、qBittorrent 与共享目录。构建没有预置密码、订阅、凭据或下载
 目录。
 
+如果 `lsblk` 已显示 `/dev/mmcblk0p2` 挂在 `/mnt/mmcblk0p2`，但 `/overlay`
+仍来自 `/dev/mtdblock6`，说明 SD 和 ext4 均正常，只是 extroot 初始化服务尚未
+运行。执行：
+
+```sh
+/etc/init.d/luban-extroot enable
+/etc/init.d/luban-extroot start
+```
+
+服务会验证 SD 镜像、写入 fstab 并自动重启。重启后再次检查 `/overlay`。本仓库
+同时在固件中提供 `/etc/rc.d/S96luban-extroot`，后续构建会默认运行该服务。
+
+精简 NOR 固件没有内置 `fdisk`；它是独立的 util-linux 软件包，不影响内核识别
+GPT 或 extroot。查看现有分区可使用：
+
+```sh
+lsblk
+block info
+cat /proc/partitions
+```
+
+确实需要修改分区表时，等 extroot 和网络正常后再执行 `apk update && apk add fdisk`。
+
 ## 9. 停止本地 TFTP 服务
 
 烧录完成后不再需要 TFTP：
