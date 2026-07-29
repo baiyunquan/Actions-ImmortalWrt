@@ -11,7 +11,7 @@ U-Boot、Config 或 Factory。Factory 保存本机 MAC 地址和 Wi-Fi 标定数
 
 ## 1. 当前本地构建成果
 
-本机已经完成一次交叉编译和双镜像组装，成果位于：
+交叉编译和双镜像组装，成果位于：
 
 ```text
 /home/liaic/backup_luban/.local-build/output/
@@ -20,24 +20,17 @@ U-Boot、Config 或 Factory。Factory 保存本机 MAC 地址和 Wi-Fi 标定数
 其中可直接部署的文件是：
 
 ```text
-/home/liaic/backup_luban/.local-build/output/JDCOS.bin
-/home/liaic/backup_luban/.local-build/output/luban-sd-extroot.img.gz
+/.local-build/output/JDCOS.bin
+/backup_luban/.local-build/output/luban-sd-extroot.img.gz
 ```
 
 同一目录还保存 `SHA256SUMS`、NOR/extroot 软件清单、最终配置和各源码提交号。
 烧录前必须验证：
 
 ```sh
-cd /home/liaic/backup_luban/.local-build/output
+cd /.local-build/output
 sha256sum -c SHA256SUMS
 stat -c '%n %s bytes' JDCOS.bin
-```
-
-当前已验证的两个部署镜像为：
-
-```text
-ced1f7f47f400afebad251a6911fca27b44570e5b16c0ac16388071a55b77d04  JDCOS.bin
-58ecfddc0b7c4aca5e55765d13a97a62da8f0762ad9cfcece48856fca1c51926  luban-sd-extroot.img.gz
 ```
 
 重新构建后校验值会改变，应始终以新输出目录内的 `SHA256SUMS` 为准。
@@ -63,7 +56,7 @@ sudo apt install -y \
 从仓库根目录执行以下命令。Nikki 必须递归初始化，不能只取得主仓库：
 
 ```sh
-cd /home/liaic/backup_luban/Actions-ImmortalWrt
+cd Actions-ImmortalWrt
 git submodule update --init --recursive
 
 export LUBAN_REPO_DIR="$PWD"
